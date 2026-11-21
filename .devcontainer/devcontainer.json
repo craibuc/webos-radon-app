@@ -1,0 +1,21 @@
+{
+  "name": "Radon webOS",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22-bookworm",
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=/home/node/.claude.json,type=bind"
+  ],
+  "postCreateCommand": "npm install -g @webos-tools/cli && sudo apt-get update && sudo apt-get install -y --no-install-recommends chromium && sudo rm -rf /var/lib/apt/lists/*",
+  "containerEnv": {
+    "CHROME_BIN": "/usr/bin/chromium"
+  },
+  "forwardPorts": [8080],
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code", "ritwickdey.LiveServer", "editorconfig.editorconfig"]
+    }
+  }
+}
