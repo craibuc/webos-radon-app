@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Radon</title>
+  <meta name="viewport" content="width=1920, initial-scale=1">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header id="top">
+      <nav id="nav">
+        <button class="f tab" id="tab-search" data-view="search" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg></button>
+        <button class="f tab" id="tab-browse" data-view="browse">Home</button>
+        <button class="f tab" id="tab-favorites" data-view="favorites">Favorites</button>
+        <button class="f tab" id="tab-now"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>Now Playing</button>
+        <button class="f tab" id="tab-settings" data-view="settings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></svg></button>
+      </nav>
+      <div id="searchrow" hidden>
+        <input class="f" id="q" type="search" placeholder="Search stations" autocomplete="off" readonly>
+      </div>
+      <div id="filters">
+        <button class="f filter" id="f-country"><span class="k">Country</span><span class="v"></span></button>
+        <button class="f filter" id="f-tag"><span class="k">Genre</span><span class="v"></span></button>
+        <button class="f filter" id="f-bitrate"><span class="k">Bitrate</span><span class="v"></span></button>
+        <button class="f filter" id="f-order"><span class="k">Sort</span><span class="v"></span></button>
+      </div>
+    </header>
+
+    <main id="main">
+      <div id="settings" hidden></div>
+      <div id="home"></div>
+      <div id="grid" hidden></div>
+      <div id="empty" hidden></div>
+      <div id="pager" hidden>
+        <button class="f pill" id="pg-prev">&larr; Previous</button>
+        <span id="pg-info"></span>
+        <button class="f pill" id="pg-next">Next &rarr;</button>
+      </div>
+    </main>
+
+    <section id="detail" hidden>
+      <button class="f" id="d-back">&larr; Back</button>
+      <div id="d-top">
+        <div id="d-art"><img id="d-img" alt=""><span id="d-letter"></span></div>
+        <div id="d-info">
+          <h1 id="d-name"></h1>
+          <div id="d-sub"></div>
+          <div id="d-genres"></div>
+          <div id="d-desc"></div>
+          <div id="d-actions">
+            <button class="f play-pill" id="d-play"></button>
+            <button class="f round" id="d-fav" aria-label="Favorite"></button>
+            <button class="f pill" id="d-quality" hidden>Quality</button>
+          </div>
+        </div>
+      </div>
+      <div id="d-tabs">
+        <button class="f tab active" id="d-tab-history">Recently played</button>
+        <button class="f tab" id="d-tab-sources" hidden>Other streams</button>
+      </div>
+      <div id="d-list"></div>
+      <div id="d-sources" hidden></div>
+      <div id="d-empty" hidden>Song history isn't available for this station.</div>
+    </section>
+
+    <section id="nowpage" hidden>
+      <div id="n-bg"></div>
+      <div id="n-station"></div>
+      <div id="n-art"><img id="n-img" alt=""><span id="n-letter"></span></div>
+      <div id="n-title"><span id="n-title-t"></span></div>
+      <div id="n-artist"></div>
+      <div id="n-host"></div>
+      <div id="n-status"></div>
+      <div id="n-actions">
+        <button class="f round" id="n-play" aria-label="Play or stop"></button>
+        <button class="f round" id="n-fav" aria-label="Favorite"></button>
+        <button class="f round" id="n-info" aria-label="Station details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg></button>
+      </div>
+    </section>
+  </div>
+
+  <div id="exit-dialog" hidden>
+    <div id="exit-box">
+      <h2>Do you want to exit Radon?</h2>
+      <div id="exit-actions">
+        <button class="f" id="exit-no">Cancel</button>
+        <button class="f" id="exit-yes">Exit</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="picker" hidden>
+    <div id="picker-box">
+      <h2 id="picker-title"></h2>
+      <div id="picker-list"></div>
+    </div>
+  </div>
+
+  <audio id="audio" preload="none"></audio>
+  <script src="regions.js"></script>
+  <script src="genres.js"></script>
+  <script src="providers.js"></script>
+  <script src="nowplaying.js"></script>
+  <script src="fit.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
