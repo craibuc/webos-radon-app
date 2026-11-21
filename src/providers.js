@@ -1,5 +1,21 @@
-// Known multi-stream providers. A station whose stream host matches `hosts` gets a
-// "More from this source" list. Stream lists come from each provider's own website.
+// Known multi-stream providers (curated data). A station whose stream host matches `hosts` is treated as part of the
+// provider: its station page gets an "Other streams" tab listing `streams`, and (when `feed` is set) now-playing
+// comes from the provider's own feed instead of the stream. Stations from providers NOT listed here still get
+// "Other streams" through a directory lookup (see lookupSource in app.js); this file is for sources the directory
+// does not know about, or knows only partially.
+//
+// Provider fields
+//   id       short key, used to cache directory extras (localStorage radio.cache.prov.<id>)
+//   name     shown in headings
+//   hosts    stream host suffixes that identify the provider (matched on the end of the hostname)
+//   feed     optional now-playing adapter name; only 'mpr' exists (nowplaying.js)
+//   icon     fallback artwork for streams without their own `favicon` (a path inside src/)
+//   streams  one entry per stream; same shape as an app station object (see compact() in app.js) plus:
+//              programId  the provider's feed id for this stream (MPR: used in the WebSocket path)
+//              desc       one-line description shown when a stream has no genre tags
+//              url / alt  preferred stream and an alternative encoding
+// The MPR list was read from thecurrent.org's own site; all 13 stream URLs were verified to respond.
+// To add a provider: append an object here, add its logo under src/icons/, and (if it has a feed) add an adapter in nowplaying.js.
 window.PROVIDERS = [
   {
     id: 'mpr',

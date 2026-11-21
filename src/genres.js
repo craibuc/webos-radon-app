@@ -7,6 +7,10 @@
 //   test   - decides which family a tag belongs to, and weeds out substring false positives
 //            from the search ("pop" also returns "popular").
 // A tag goes to the first family whose `test` matches, so order matters (Metal & Punk before Rock).
+//
+// Used by app.js in four places: the Genre picker (group), the "All <family>" Search filter (terms + test), the Home
+// shelves (terms[0] + test, one shelf per family) and Settings -> "Hide genres on Search" (test, applied to results).
+// To add a family: append an entry (the list order is the Home shelf order). Names double as keys in saved settings.
 (() => {
   const FAMILIES = [
     { name: 'Metal & Punk', terms: ['metal', 'punk', 'hardcore'], test: /metal|punk|hardcore/i },

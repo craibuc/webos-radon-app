@@ -1,3 +1,19 @@
+/*
+ * Radon styles. Fixed 1920x1080 layout (see fit.js), dark theme, designed for a remote control.
+ *
+ * Conventions
+ *  - .f marks everything focusable; the focus look (accent border, zoom) is defined once, below. Cards, nav tabs and
+ *    the exit buttons override it with their own look (white pill / white ring).
+ *  - Visibility uses the [hidden] attribute; one rule near the end of the base styles forces it to win over display: flex.
+ *  - Later sections deliberately override earlier ones (the file grew by appending); when changing a rule, search for
+ *    the selector's last occurrence. <button> elements used as flex containers need align-items set explicitly:
+ *    the TV's browser defaults them to flex-start (see the card-fill comment near the end).
+ *  - Anything scrolling (Home rows, pop-up lists) clips its contents, so leave padding for the focus ring and zoom.
+ *
+ * Sections (search for the banner comments): base + focus, nav pill, filters, grid / cards, station page, Now Playing,
+ * Search page, Home shelves, exit prompt, Settings, focus-ring room. Blocks marked LEGACY style elements that no
+ * longer exist (listed in DEVELOPERS.md) and can be deleted.
+ */
 :root {
   --bg: #0e1116;
   --panel: #181d25;
@@ -43,6 +59,7 @@ button, input { font: inherit; color: inherit; }
 
 #empty { padding: 120px 0; text-align: center; color: var(--muted); }
 
+/* LEGACY (unused): the bottom player bar was replaced by the Now Playing page. #player and #p-* (down to #p-status.err) match no element. */
 #player { height: 150px; background: var(--panel); display: flex; align-items: center; gap: 28px; padding: 0 56px; }
 #p-logo { width: 100px; height: 100px; border-radius: 14px; background: #0b0e13; display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
 #p-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
@@ -53,6 +70,7 @@ button, input { font: inherit; color: inherit; }
 #p-status { color: var(--muted); min-height: 1.25em; font-size: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #p-status.err { color: var(--bad); }
 .round { width: 84px; height: 84px; border-radius: 50%; background: var(--panel-2); display: flex; align-items: center; justify-content: center; padding: 0; }
+/* LEGACY (unused): .round.big was the old bar's play button; no element has it any more. */
 .round.big { width: 100px; height: 100px; background: var(--accent); color: #06121f; }
 .round.big:focus { background: #7dbdff; }
 .round svg { width: 46px; height: 46px; }
@@ -70,11 +88,13 @@ button, input { font: inherit; color: inherit; }
 .opt.sel .lbl::before { content: "\2713\00a0"; color: var(--accent); }
 .hdr { font-size: 20px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 20px 22px 4px; }
 
+/* LEGACY (unused): #source-* belonged to the old full-screen "sibling streams" view, now the "Other streams" tab on the station page. */
 #source-bar { display: flex; align-items: center; gap: 28px; padding: 8px 0 14px; }
 #source-back { background: var(--panel); border-radius: 40px; padding: 10px 30px; font-weight: 600; }
 #source-title { margin: 0; font-size: 32px; }
 
 /* player bar: the left part is a button that opens the playing station's page */
+/* LEGACY (unused): #p-info was the old player bar's clickable area. */
 #p-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 28px; background: none; padding: 8px 14px; margin-left: -14px; border-radius: 20px; text-align: left; }
 .card.playing::after { content: "Now playing"; position: absolute; top: 12px; left: 12px; background: var(--accent); color: #06121f; font-size: 17px; font-weight: 700; padding: 2px 12px; border-radius: 20px; }
 
@@ -96,6 +116,7 @@ button, input { font: inherit; color: inherit; }
 .play-pill svg { width: 30px; height: 30px; }
 .play-pill:focus { background: #fff; }
 #d-actions .round { width: 76px; height: 76px; }
+/* LEGACY (unused): #d-list-head was replaced by the "Recently played" tab. */
 #d-list-head { margin: 36px 0 10px; font-size: 24px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 #d-list { display: flex; flex-direction: column; gap: 6px; }
 #d-empty { margin-top: 40px; color: var(--muted); font-size: 24px; }
@@ -232,3 +253,24 @@ button, input { font: inherit; color: inherit; }
 .shelf .row { padding: 22px 56px 26px; margin: 0 -56px; scroll-padding-inline: 56px; }  /* strips run to the screen edges, so tiles slide off the screen, not off an invisible line; ring + zoom fit beside the first/last tile */
 #main { padding-top: 22px; }                                                             /* first row of a grid */
 #picker-list { padding: 12px 20px; }                                                     /* pop-up lists (country, genre, ...) */
+
+/* ---- Now Playing animation ----
+   All CSS, driven by one class: #nowpage.playing (set in renderNowPage). Only transform and opacity are animated, which
+   the TV can composite without repainting. The bars are decorative: they do not follow the audio (the TV plays the
+   stream outside the app's reach). */
+#n-art-wrap { position: relative; width: 470px; height: 470px; flex: none; }
+#n-halo { position: absolute; left: 50%; top: 50%; width: 680px; height: 680px; margin: -340px 0 0 -340px; border-radius: 50%; opacity: 0; transition: opacity 1.2s ease;
+  background: conic-gradient(rgba(255,255,255,0), rgba(255,255,255,.42) 12%, rgba(255,255,255,0) 30%, rgba(255,255,255,.3) 58%, rgba(255,255,255,0) 78%, rgba(255,255,255,.36) 92%, rgba(255,255,255,0));
+  filter: blur(46px); }
+#nowpage > #n-bars { position: absolute; left: 0; right: 0; bottom: 0; height: 200px; z-index: 0; opacity: .75; display: flex; align-items: flex-end; justify-content: center; gap: 12px; padding: 0 48px; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 100%); mask-image: linear-gradient(to top, #000 0%, transparent 100%); }
+#n-bars i { display: block; flex: 1; max-width: 26px; height: 100%; border-radius: 14px 14px 0 0; transform-origin: bottom; transform: scaleY(.05); transition: transform .9s ease;
+  background: linear-gradient(to top, rgba(255,255,255,.62), rgba(255,255,255,.1)); }
+#nowpage.playing #n-halo { opacity: .6; animation: n-spin 22s linear infinite; }
+#nowpage.playing #n-bg { animation: n-drift 34s ease-in-out infinite alternate; will-change: transform; }
+#nowpage.playing #n-art { animation: n-breathe 7s ease-in-out infinite; }
+#nowpage.playing #n-bars i { animation: n-bar var(--d, 1s) ease-in-out var(--o, 0s) infinite alternate; }
+@keyframes n-spin { to { transform: rotate(360deg); } }
+@keyframes n-drift { from { transform: translate(-3%, -2%) scale(1.04) rotate(0deg); } to { transform: translate(3%, 2%) scale(1.16) rotate(6deg); } }
+@keyframes n-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.028); } }
+@keyframes n-bar { from { transform: scaleY(.07); } to { transform: scaleY(var(--h, .8)); } }

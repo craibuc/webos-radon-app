@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!--
+    Page structure (all logic is in app.js; see its header). Everything focusable has class "f".
+      #top        header: #nav (the tab pill), #searchrow (Search page), #filters (Search page)
+      #main       content for the current tab: #settings | #home (genre shelves) | #grid (Search results / Favorites),
+                  plus #empty (message) and #pager (Previous / Next, Search only)
+      #detail     overlay: station page (artwork, actions, Recently played / Other streams tabs)
+      #nowpage    overlay: full-screen Now Playing
+    Outside #app: #exit-dialog (Back at the top asks to exit), #picker (pop-up list used by the filters and Settings),
+    and the single <audio> element. Overlays are toggled with the hidden attribute by renderChrome() in app.js.
+  -->
   <div id="app">
     <header id="top">
       <nav id="nav">
@@ -17,7 +27,7 @@
         <button class="f tab" id="tab-settings" data-view="settings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></svg></button>
       </nav>
       <div id="searchrow" hidden>
-        <input class="f" id="q" type="search" placeholder="Search stations" autocomplete="off" readonly>
+        <input class="f" id="q" type="search" placeholder="Search by name or genre" autocomplete="off" readonly>
       </div>
       <div id="filters">
         <button class="f filter" id="f-country"><span class="k">Country</span><span class="v"></span></button>
@@ -66,8 +76,9 @@
 
     <section id="nowpage" hidden>
       <div id="n-bg"></div>
+      <div id="n-bars" aria-hidden="true"></div>
       <div id="n-station"></div>
-      <div id="n-art"><img id="n-img" alt=""><span id="n-letter"></span></div>
+      <div id="n-art-wrap"><div id="n-halo" aria-hidden="true"></div><div id="n-art"><img id="n-img" alt=""><span id="n-letter"></span></div></div>
       <div id="n-title"><span id="n-title-t"></span></div>
       <div id="n-artist"></div>
       <div id="n-host"></div>
@@ -98,6 +109,8 @@
   </div>
 
   <audio id="audio" preload="none"></audio>
+  <!-- Plain scripts, no modules or bundler. Order matters: the four data/helper scripts publish globals that app.js reads
+       (regions.js, genres.js, providers.js, nowplaying.js), fit.js scales the page on desktop, app.js starts everything. -->
   <script src="regions.js"></script>
   <script src="genres.js"></script>
   <script src="providers.js"></script>

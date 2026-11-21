@@ -1,5 +1,5 @@
-// Scale the fixed 1920x1080 layout to the window so it is usable in a desktop browser.
-// On the TV the window is 1920x1080, so the scale is 1 and nothing changes.
+// Scale the fixed 1920x1080 layout to the window so it is usable in a desktop browser (handy when developing with
+// file:// in Chrome). On the TV the window is exactly 1920x1080, so the scale is 1 and this does nothing.
 (() => {
   const fit = () => {
     const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);

@@ -1,7 +1,41 @@
 'use strict';
+/*
+ * Radon: internet-radio browser/player for LG webOS TV (Chromium 132, 1920x1080, remote control only).
+ *
+ * The whole app is this one IIFE: no framework, no bundler, no runtime dependencies. Four small scripts load
+ * first (see index.html) and publish the globals this file reads:
+ *   window.REGION_ORDER, regionOf()   regions.js     country picker grouping
+ *   window.GENRES                     genres.js      genre families (genre picker, Home shelves, hide-genres)
+ *   window.PROVIDERS                  providers.js   curated multi-stream sources (The Current / MPR)
+ *   window.NowPlaying                 nowplaying.js  song / cover art / host feed for the playing station
+ *
+ * Reading order (search for the "// ----------" banners):
+ *   config, helpers, radio-browser API, station model + merging encodings, state, providers,
+ *   searching (paged), rendering (cards, grid, nav, chrome), Now Playing page, playback,
+ *   station page, sources for any station, exit prompt, pickers, Home shelves, Settings, filters,
+ *   wiring, D-pad navigation + key handler, search box, boot.
+ *
+ * Ideas that explain most of the code:
+ *  - Screens: Home (genre shelves), Search (query + filters, paged), Favorites, Settings. Two overlays can open
+ *    on top of them: the station page (state.detail) and Now Playing (state.nowOpen). state.view is 'browse'
+ *    (= Home) | 'search' | 'favorites' | 'settings'. Overlays hide #main through renderChrome().
+ *  - Focus is the only selection mechanism. Every interactive element has class "f" (a <button>, or the search
+ *    <input>). The TV gives web apps no spatial navigation, so move() implements the arrow keys itself, and
+ *    focusing a nav tab activates it (NAV_ACTIONS): there is no click step.
+ *  - A "station" is a plain object (see compact()). The directory lists every encoding as its own station, so
+ *    mergeInto() folds encodings into one station with `variants`; its id is 'g:<country>|<base name>'.
+ *  - Nothing plays until the user presses Play (cards open the station page), except the optional
+ *    "play last station on start" setting.
+ *  - Persistence is localStorage only (store.get / store.set, keys prefixed "radio."). Deleting the app from
+ *    the TV wipes it.
+ *  - Network: radio-browser.info (directory), MPR's WebSocket feed and the stations' own streams (song titles),
+ *    iTunes Search (cover art). This app's page is not subject to CORS on the TV, so all of them are called directly.
+ */
 (() => {
   // ---------- config ----------
+  // radio-browser.info mirrors, tried in this order: api() fails over to the next one on any error.
   const API_HOSTS = ['https://de1.api.radio-browser.info', 'https://de2.api.radio-browser.info'];
+  // Stations per page on the Search list (Previous / Next). Multi-term queries slice this up, see loadPage().
   const PAGE = 40;
   const BITRATES = [0, 64, 96, 128, 192, 256, 320];
   const ORDERS = [
@@ -11,11 +45,15 @@
     { v: 'bitrate', label: 'Highest bitrate', reverse: true },
     { v: 'name', label: 'Name A-Z', reverse: false },
   ];
+  // webOS remote key codes. Back is 461 (not 8/27); yellow 405, blue 406. PageUp/PageDown (33/34) and CH-/CH+
+  // (427/428) are matched inline in the keydown handler.
   const KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, ESC: 27, BACKSPACE: 8,
     BACK: 461, YELLOW: 405, BLUE: 406, PLAY: 415, PAUSE: 19, STOP: 413, PLAYPAUSE: 463 };
 
   // ---------- helpers ----------
   const $ = (s, r = document) => r.querySelector(s);
+  // localStorage wrapper: JSON values under keys prefixed "radio."; failures are swallowed because storage can be
+  // unavailable. Keys: favorites, last, view, filters, settings, cache.countries3, cache.tags, cache.prov.<id>.
   const store = {
     get(k, d) { try { const v = localStorage.getItem('radio.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('radio.' + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
@@ -40,6 +78,8 @@
   };
 
   // ---------- radio-browser API ----------
+  // GET <mirror><path>?<params> as JSON. 10 s timeout per mirror; on error it tries the next mirror and remembers
+  // the one that worked (hostIdx). Throws the last error if every mirror fails.
   let hostIdx = 0;
   async function api(path, params) {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
@@ -59,6 +99,7 @@
     throw lastErr;
   }
 
+  // Rarely-changing directory lists (countries, tags) are cached in localStorage for 24 hours.
   async function cachedList(key, loader) {
     const c = store.get('cache.' + key, null);
     if (c && Date.now() - c.t < 24 * 3600 * 1000) return c.d;
@@ -76,7 +117,11 @@
     return d.filter(t => t.stationcount >= 15).map(t => ({ name: t.name, n: t.stationcount }));
   });
 
-  // Keep only what we need so favorites stay small in localStorage.
+  // Directory record -> the app's station object (kept small: favorites are stored whole in localStorage).
+  //   id       directory uuid; becomes 'g:<cc>|<base name>' once mergeInto() has grouped the station
+  //   name, url (resolved stream), alt (the original url), favicon, cc / country, tags (comma-separated string),
+  //   codec, bitrate, hls, homepage, lang
+  // Added later: variants + uuid (mergeInto); desc + programId (providers.js entries).
   const compact = s => ({
     id: s.stationuuid, name: (s.name || '').trim() || 'Unnamed', url: s.url_resolved || s.url, alt: s.url,
     favicon: s.favicon || '', cc: s.countrycode || '', country: s.country || '',
@@ -118,12 +163,15 @@
   const codecRank = c => (/mp3/i.test(c) ? 0 : /aac/i.test(c) ? 1 : 2);
   const variantOf = s => ({ uuid: s.id, url: s.url, alt: s.alt, codec: s.codec, bitrate: effBitrate(s) });
 
+  // Re-rank a group's variants (highest bitrate first, MP3 before AAC on a tie) and copy the best onto the group's
+  // own url / alt / codec / bitrate / uuid, so a merged group can be played like a single station.
   function applyPrimary(g) {
     g.variants.sort((a, b) => (b.bitrate - a.bitrate) || (codecRank(a.codec) - codecRank(b.codec)));
     const v = g.variants[0];
     g.url = v.url; g.alt = v.alt; g.codec = v.codec; g.bitrate = v.bitrate; g.uuid = v.uuid;
   }
 
+  // The group id 'g:<cc>|<base name>' is stable between sessions, so favorites and the playing marker keep matching.
   // Returns the station when it starts a new group, null when it was folded into an existing one.
   function mergeInto(map, s) {
     const key = (s.cc || '') + '|' + baseKey(s.name);
@@ -146,6 +194,14 @@
   }
 
   // ---------- state ----------
+  //   view       'browse' (Home) | 'search' | 'favorites' | 'settings'; only browse/favorites are remembered
+  //   filters    Search-page filters {cc, ccLabel, tag, tagFamily, bitrate, order}. (`name` is unused: typed text is state.query)
+  //   favorites  saved station objects, so they show without a network call
+  //   current    the station last started (persisted as 'last'); playing = audio is actually running
+  //   np         latest now-playing info for `current` (shape: see nowplaying.js)
+  //   detail     the open station page or null (shape: see enterDetail); nowOpen / exitOpen = those overlays are open
+  //   picker     the open pop-up list, {returnTo}; fresh = launched straight onto Now Playing and nothing visited yet
+  // Set elsewhere, not declared here: variant (encoding chosen for `current`), nowScroll, and the list accessors below.
   const state = {
     view: store.get('view', 'browse'),
     filters: Object.assign({ cc: '', ccLabel: '', tag: '', tagFamily: '', bitrate: 0, order: 'votes', name: '' }, store.get('filters', {})),
@@ -161,11 +217,13 @@
   const settings = Object.assign({ autoplay: true, startOn: 'now', hiddenGenres: ['Religious'] }, store.get('settings', {}));
   state.filters.name = ''; // the name filter moved to the Search page
 
-  // One list per page that shows directory stations (Home and Search), each with its own pages, paging and
-  // in-flight request. state.stations / pages / page ... read and write the list of the page being shown.
+  // Only the Search page has a paged list: lists.search holds its pages, paging and in-flight request. The accessors
+  // defined below make state.stations / pages / seenIds / page / hasMore / loading / token / error read and write it.
+  // (lists.browse is a leftover from when Home was a paged list as well; Home is built from `home` below.)
   const newList = () => ({ stations: [], pages: [], seenIds: new Set(), page: 0, hasMore: false, loading: false, token: 0, error: '' });
   const lists = { browse: newList(), search: newList() };
-  // Home: one shelf per genre family, each filled from the directory.
+  // Home: one shelf per genre family, each filled from the directory. shelves[i] = {family, stations, state:'loading'|'done'|'error'};
+  // cc = the country the shelves were loaded for; token discards responses from a superseded load.
   const home = { shelves: [], cc: null, token: 0, error: false };
   const listView = () => 'search'; // only the Search page has a paged list; Home is shelves
   const isListView = () => state.view === 'search';
@@ -175,13 +233,15 @@
 
   // ---------- providers (sibling streams from the same source) ----------
   const PROVIDERS = window.PROVIDERS || [];
+  // The curated provider (providers.js) whose host list matches this station's stream host, or null.
   function providerFor(st) {
     if (!st || !st.url) return null;
     let host;
     try { host = new URL(st.url).hostname.toLowerCase(); } catch (e) { return null; }
     return PROVIDERS.find(p => p.hosts.some(h => host === h || host.endsWith('.' + h))) || null;
   }
-  // Sibling streams open as a card grid (same cards as browsing), with a Back button.
+  // A provider's stream list carries no genres or icons of its own: enrichProvider() borrows genres from the matching
+  // directory entries (cached 7 days). It resolves true when it did work, so callers re-render only once.
   const PROVIDER_CACHE_MS = 7 * 24 * 3600 * 1000;
   async function enrichProvider(p) {
     // Provider lists carry no icons or genres; borrow them from the directory entry for the same stream.
@@ -242,6 +302,10 @@
     L.page = n; L.stations = p.stations; L.hasMore = p.hasMore; L.error = '';
   }
 
+  // Load page n of the Search list. reset = a new query (discards old pages and any request still in flight).
+  // Pages are cached in lists.search.pages so Previous is instant. A page can come back empty after client-side
+  // filtering (genre family test, hidden genres, HLS, de-duplication); it then advances up to 3 pages on its own.
+  // "All <family>" runs one request per family term in parallel and merges them (the directory matches one tag per request).
   async function loadPage(n, reset, focusFirst) {
     const view = state.view;
     if (view !== 'search') return;
@@ -252,7 +316,8 @@
     const token = L.token;
     const done = () => { renderGrid(true); if (focusFirst) { const c = grid.querySelector('.card'); if (c) c.focus(); } };
     if (L.pages[n]) { applyPage(L, n); done(); return; }
-    // Search combines the typed name with the filters and waits until it has something to look for; Home is top-voted.
+    // Search combines the typed name with the filters and waits until it has something to look for.
+    // (The fallback after the ':' is unreachable now: loadPage returns early unless view === 'search'.)
     const f = view === 'search' ? Object.assign({}, state.filters, { name: state.query }) : { cc: '', tag: '', tagFamily: '', bitrate: 0, order: 'votes', name: '' };
     if (view === 'search' && !searchActive(f)) {
       L.loading = false; L.stations = []; L.page = 0; L.hasMore = false; L.error = '';
@@ -265,8 +330,12 @@
     const order = ORDERS.find(o => o.v === f.order) || ORDERS[0];
     // "All <family>" runs one query per term, so each term gets a smaller slice to keep a page about PAGE long.
     const hidden = view === 'search' ? hiddenFamilies(f) : [];
-    const terms = fam ? fam.terms : [null];
-    const limit = terms.length > 1 ? Math.max(12, Math.ceil(PAGE / terms.length)) : PAGE;
+    // What to ask the directory. Typed text matches a station's NAME or its GENRE tags: the directory ANDs its filters, so
+    // that is two requests whose results are merged (like "All <family>"). With a genre filter already chosen, the text
+    // just narrows by name within that genre.
+    const byNameOrGenre = !!f.name && !fam && !f.tag;
+    const variants = fam ? fam.terms.map(t => ({ tag: t })) : byNameOrGenre ? [{ name: f.name }, { tag: f.name }] : [{}];
+    const limit = variants.length > 1 ? Math.max(12, Math.ceil(PAGE / variants.length)) : PAGE;
     try {
       let page = n, tries = 0;
       for (;;) {
@@ -274,13 +343,13 @@
         if (f.cc) params.countrycode = f.cc;
         if (!fam && f.tag) { params.tag = f.tag; params.tagExact = 'true'; }
         if (f.bitrate) params.bitrateMin = String(f.bitrate);
-        if (f.name) params.name = f.name;
-        const results = await Promise.all(terms.map(t => api('/json/stations/search', t ? Object.assign({}, params, { tag: t }) : params)));
+        if (f.name && !byNameOrGenre) params.name = f.name;
+        const results = await Promise.all(variants.map(v => api('/json/stations/search', Object.assign({}, params, v))));
         if (token !== L.token) return; // a newer search superseded this one
         const raw = [];
         const inPage = new Set();
         for (const r of results) for (const s of r) if (!inPage.has(s.stationuuid)) { inPage.add(s.stationuuid); raw.push(s); }
-        if (terms.length > 1) raw.sort((x, y) => (order.v === 'name' ? String(x.name).localeCompare(String(y.name)) : (y[order.v] || 0) - (x[order.v] || 0)));
+        if (variants.length > 1) raw.sort((x, y) => (order.v === 'name' ? String(x.name).localeCompare(String(y.name)) : (y[order.v] || 0) - (x[order.v] || 0)));
         const hasMore = results.some(r => r.length === limit);
         const map = new Map(), stations = [];
         for (const r of raw) {
@@ -351,6 +420,8 @@
     return box;
   }
 
+  // One art-first tile. Used on Home shelves, the Search / Favorites grid and the "Other streams" tab. Sets el._station
+  // (read by the key handlers and the playing / favorite markers). Selecting it opens the station page; it never plays directly.
   function cardFor(st) {
     const b = el('button', 'f card');
     b.dataset.id = st.id;
@@ -369,6 +440,8 @@
     return b;
   }
 
+  // Render the current screen's content: Home shelves, Settings, or the grid (Search results / Favorites).
+  // reset = start at the top instead of keeping scroll position and the focused card.
   function renderGrid(reset) {
     const onHome = state.view === 'browse', onSettings = state.view === 'settings';
     $('#home').hidden = !onHome; $('#settings').hidden = !onSettings; grid.hidden = onHome || onSettings;
@@ -385,7 +458,7 @@
     if (!list.length && !state.loading) {
       if (state.error) msg = state.error;
       else if (state.view === 'favorites') msg = 'No favorites yet.';
-      else if (state.view === 'search') msg = searchActive() ? 'No stations found.' : 'Search for a station, or pick a country or genre.';
+      else if (state.view === 'search') msg = searchActive() ? 'No stations found.' : 'Search by station name or genre, or use the filters.';
       else msg = 'No stations match these filters.';
     }
     empty.hidden = !msg; empty.textContent = msg;
@@ -409,7 +482,8 @@
     for (const c of document.querySelectorAll('#grid .card, #home .card')) if (c._station) c.classList.toggle('playing', state.playing && sameStation(c._station, state.current));
   }
 
-  // The filter row belongs to Home and Favorites, the search box to Search; a station page or Now Playing hides both.
+  // Which parts of the page show. The search box and the filter row belong to the Search page only; a station page or
+  // Now Playing (the overlays) hides the main area and both rows, but the nav stays visible.
   function renderChrome() {
     const overlay = !!state.detail || state.nowOpen;
     $('#main').hidden = overlay;
@@ -417,6 +491,8 @@
     $('#searchrow').hidden = overlay || state.view !== 'search';
   }
 
+  // The nav pill: highlights the section you are in (Now Playing wins while its page is open); .live animates the
+  // bars on the Now Playing tab while audio plays.
   function renderNav() {
     $('#tab-browse').classList.toggle('active', !state.nowOpen && state.view === 'browse');
     $('#tab-search').classList.toggle('active', !state.nowOpen && state.view === 'search');
@@ -437,6 +513,8 @@
   }
 
   // ---------- Now Playing page (full screen, after Apple's) ----------
+  // An overlay like the station page: it hides #main and the header rows (renderChrome) but keeps the nav visible.
+  // The tab opens it as soon as it is focused. state.nowScroll remembers #main's scroll position for when it closes.
   let lastNowArt = null, lastNowTitle = null;
   function openNow(keepFocus) {
     if (state.detail) closeDetail();
@@ -457,8 +535,11 @@
   }
   function exitNow() { if (closeNow()) { const t = $('#tab-' + state.view); if (t) t.focus({ preventScroll: true }); } }
 
+  // Safe to call at any time (playback, now-playing info or status changed): it only touches the DOM when something
+  // differs, comparing art and title with the last values to avoid flicker and marquee restarts.
   function renderNowPage() {
     if (!state.nowOpen) return;
+    $('#nowpage').classList.toggle('playing', !!state.current && state.playing); // switches the CSS animations on and off
     const st = state.current, np = state.np;
     if (!st) { // nothing has been played yet: an empty page, not a missing tab
       for (const id of ['#n-station', '#n-artist', '#n-host', '#n-status']) $(id).textContent = '';
@@ -522,10 +603,12 @@
     renderPlaying();
   }
 
+  // The status line on Now Playing ('Connecting…', 'Buffering…', 'Stopped', or an error). 'Playing' itself is not shown.
   let statusBase = '', statusErr = false;
   function setStatus(text, isErr) { statusBase = text; statusErr = !!isErr; renderNowPage(); }
 
   // ---------- now playing ----------
+  // Runs the nowplaying.js feed for the playing station; state.np holds the latest {title, artist, album, art, host, show, history}.
   let npStop = null;
   function beginNowPlaying(st) {
     endNowPlaying();
@@ -539,6 +622,8 @@
   function renderNowPlaying() { renderNowPage(); }
 
   // ---------- playback ----------
+  // One <audio> element for the whole app. The TV plays it natively (Web Audio cannot tap it, so no in-app EQ).
+  // `attempts` = stream URLs to try for the current station, preferred variant first; onFail() steps to the next one.
   const audio = $('#audio');
   let attempts = [], attemptIdx = 0;
 
@@ -558,6 +643,8 @@
     return st.variants.find(v => v.url === u || v.alt === u) || null;
   }
 
+  // Start a station (always an explicit user action or resume-on-start). `variant` = an encoding picked in the Quality list.
+  // Saved as 'last', which is what resume-on-start plays.
   function play(st, variant) {
     state.current = st; store.set('last', st);
     state.variant = variant || null;
@@ -633,6 +720,10 @@
     enterDetail(st, base, stack, tab);
   }
 
+  // state.detail = {st, opener, scroll, stack, tab, wantSources, info, listKey, timer, emptyShown, stop}
+  //   opener  element to refocus on Back;  scroll  #main scrollTop to restore;  stack  earlier stations (drilling through
+  //   "Other streams");  wantSources  open on that tab once the sibling lookup finishes;  info / listKey  latest now-playing
+  //   info and a signature of the history rows (rows are only rebuilt when it changes);  stop  stops this page's feed.
   function enterDetail(st, base, stack, tab) {
     stopDetailFeeds();
     const d = state.detail = { st, opener: base.opener, scroll: base.scroll, stack, tab: 'history', wantSources: tab === 'sources', info: null, listKey: '', timer: 0, emptyShown: false };
@@ -1133,6 +1224,9 @@
     return [...scope.querySelectorAll('.f')].filter(n => !n.hidden && n.offsetParent !== null);
   }
 
+  // Spatial navigation. From the focused .f element, pick the best .f element in the direction of travel. The score is
+  // the gap between edges plus a penalty for not overlapping (details inside). Moving up into the nav lands on the
+  // active tab rather than whichever tab is nearest, because focusing a tab switches to it.
   function move(dir) {
     const els = focusables();
     const cur = document.activeElement;
@@ -1164,6 +1258,9 @@
     }
   }
 
+  // The one key handler. Arrow keys call move(); OK clicks the focused element; colour keys and media keys are shortcuts.
+  // Back (461) unwinds in this order: typing > exit prompt (confirms) > pop-up list > Now Playing > station page >
+  // Search/Favorites/Settings -> Home > exit prompt.
   document.addEventListener('keydown', e => {
     const k = e.keyCode;
     const inInput = e.target && e.target.tagName === 'INPUT';
@@ -1231,6 +1328,7 @@
     }
   });
 
+  // UNUSED: nothing calls this any more (the search box commits through commitQuery()); safe to delete.
   function applyQueryFromInput() { commitQuery(); }
 
   // ---------- search box: highlight first, type on OK ----------
@@ -1250,7 +1348,19 @@
   qBox.addEventListener('click', () => { if (qBox.readOnly) startEdit(); }); // pointer click
 
   // ---------- boot ----------
+  // Order matters: render the chrome and the (empty) screen, start loading Home, then focus a tab. Focusing
+  // #tab-now opens Now Playing (focus = activate), then resume-on-start plays the last station if the setting is on.
   try { localStorage.removeItem('radio.dbg'); } catch (e) { /* ignore */ } // leftover from the diagnostics build
+  // Decorative bars along the bottom of Now Playing. CSS animates them while audio plays. They are NOT driven by the sound:
+  // the TV plays the stream natively, so the app cannot read its levels. Each bar gets its own speed, delay and peak
+  // (custom properties --d, --o, --h) so they do not move in step.
+  for (let i = 0; i < 56; i++) {
+    const bar = el('i');
+    bar.style.setProperty('--d', (0.55 + Math.random() * 1.25).toFixed(2) + 's');
+    bar.style.setProperty('--o', (-Math.random() * 2).toFixed(2) + 's');
+    bar.style.setProperty('--h', (0.3 + Math.random() * 0.7).toFixed(2));
+    $('#n-bars').appendChild(bar);
+  }
   renderFilters();
   renderPlayerInfo();
   setStatus(state.current ? 'Stopped' : '');

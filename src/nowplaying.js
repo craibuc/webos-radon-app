@@ -2,11 +2,16 @@
 // Now-playing metadata. window.NowPlaying.start(station, emit) -> stop()
 //
 // emit receives { title, artist, album, art, host, show, history: [{title, artist, art, at}] }
-// (any field may be empty). Sources, in order of preference:
-//   1. A provider's own feed (MPR/The Current): song, art, recent plays, hosts.
-//   2. ICY metadata read straight from the stream. Browsers can only do this when the server
-//      allows the Icy-MetaData header and exposes icy-metaint, which only some stations do.
-// Album art falls back to the iTunes Search API when a source gives a title but no art.
+// (any field may be empty) every time something changes. stop() ends the feed; call it when the station changes.
+// Sources, in order of preference:
+//   1. A provider's own feed (MPR / The Current, via WebSocket): song, cover art, recent plays, hosts and show times.
+//      Chosen when the station's stream host belongs to a providers.js entry with feed: 'mpr'.
+//   2. ICY metadata read straight from the stream (title only). It polls: connect with the Icy-MetaData header,
+//      read up to the first metadata block, hang up, repeat every ICY_POLL_MS. A desktop browser only allows this when
+//      the server permits that header and exposes icy-metaint (about one station in six); the TV's app page has no
+//      such restriction, so it works for most stations there. If two attempts fail it gives up quietly.
+// Album art falls back to the iTunes Search API when a source gives artist + title but no art.
+// Nothing here touches the DOM or the app's state; app.js owns that.
 (() => {
   const MPR_WS = 'wss://nowplayingv2.publicradio.org';
   const ICY_POLL_MS = 20000;
@@ -143,6 +148,7 @@
   }
 
   // ---------- wiring ----------
+  // The providers.js stream (with a programId) whose host matches this station's stream, or null.
   function feedFor(st) {
     let host;
     try { host = new URL(st.url).hostname.toLowerCase(); } catch (e) { return null; }
@@ -155,6 +161,8 @@
     return null;
   }
 
+  // Start the right adapter for a station. `out` de-duplicates nothing itself; it forwards each update and, when
+  // a song has no cover art, looks one up and re-emits the same info with `art` filled in (if still current).
   function start(st, emit) {
     let dead = false, lastKey = '';
     const out = info => {

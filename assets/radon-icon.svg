@@ -1,4 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Source art for the app icon and the launch splash. Render at 512x512 with a transparent background, then resize to
+       src/radon-icon-130.png (130x130, largeIcon) and src/radon-icon-80.png (80x80, icon); src/splash.png is this tile
+       centered on a 1920x1080 dark background. Keep the file NAMES of the PNGs changing when the artwork changes: the TV
+       launcher caches icons by name (see DEVELOPERS.md). -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#ffe3f1"/><stop offset="1" stop-color="#f6c6e6"/>
@@ -8,6 +12,6 @@
   <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#1a1a1a" text-anchor="middle">
     <text x="256" y="320" font-size="260" font-weight="600">Rn</text>
     <text x="256" y="408" font-size="64" font-weight="600">Radon</text>
-    <text x="256" y="466" font-size="40">Steaming Music</text>
+    <text x="256" y="466" font-size="40">Streaming Music</text>
   </g>
 </svg>

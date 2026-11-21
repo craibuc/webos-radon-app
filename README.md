@@ -1,36 +1,52 @@
 # Radon (webOS app)
 
-Internet radio browser/player for LG webOS. Step 1 of 3: browse, filter, favorites, playback.
+An internet-radio browser and player for LG webOS TV, made for a remote control. Stations come from the public
+[radio-browser.info](https://www.radio-browser.info) directory. There is no server to run and nothing to install
+except the app itself.
 
-- Stations come from radio-browser.info (filter by country, genre, min bitrate, name; sort).
-- Playback is a plain HTML5 `<audio>`; HLS streams are filtered out.
-- Favorites and last station are kept in the app's localStorage (will move to the proxy in step 2).
+## What it does
 
-Remote: arrows move, OK plays/selects, Yellow toggles favorite on the focused station (or the playing one),
-Back closes a picker, Stop/Pause stop playback. The Magic Remote pointer works too.
+- **Home**: genre shelves (Rock, Pop, Jazz & Blues, ...) of top stations for your country, each ending in "See all".
+- **Search**: type a station name *or a genre*; narrow with Country, Genre, Bitrate and Sort. Results are paged.
+- **Favorites**, **Settings** (play last station on start, open on Now Playing or Home, genres hidden from Search).
+- **Station page**: artwork, flag, genres, Play / Favorite / Quality, a *Recently played* list and *Other streams*
+  (sibling channels of the same broadcaster).
+- **Now Playing**: full-screen cover art, song, artist and host, with an animated background. Song info comes from the
+  station's own feed or stream. Opens automatically at launch if there is something to resume.
+- Exits with an Apple-TV-style "Do you want to exit?" prompt (Back at the top, then Back again or Exit).
+
+Remote: arrows move; OK selects; Back steps back; Yellow toggles a favorite; Blue opens "Other streams"; Play / Pause /
+Stop work; CH+/CH- (or PageUp/PageDown) turn pages in Search. The Magic Remote pointer works too (hovering focuses).
 
 ## Layout
 
-- `src/` – the app itself (what gets packaged; `appinfo.json` lives here)
-- `assets/` – icon source (`radon-icon.svg`); `src/icon.png` and `src/largeIcon.png` are rendered from it
-- `dist/` – built `.ipk` files
-- `build.sh` – runs `ares-package`
+- `src/` - the app itself; this is what gets packaged (`appinfo.json` lives here)
+- `assets/` - icon source (`radon-icon.svg`). `src/radon-icon-80.png`, `src/radon-icon-130.png` and `src/splash.png` are
+  rendered from it. The PNG file names are new on purpose: the TV launcher caches icons by name.
+- `dist/` - built `.ipk` files (git-ignored)
+- `build.sh` - runs `ares-package`
+- `DEVELOPERS.md` - **start here if you are changing the code**: architecture, file-by-file purpose, TV quirks, testing
 
-## Install on the TV (device `lgtv`)
+## Build and install on the TV (device `lgtv`)
+
+Needs LG's CLI (`npm i -g @webos-tools/cli`) and a TV in Developer Mode with a device named `lgtv`
+(`ares-setup-device`).
 
     cd ~/Developer/webos/radio-app
     ./build.sh
     ares-install --device lgtv dist/com.craig.radio_<version>_all.ipk
     ares-launch  --device lgtv com.craig.radio
 
-Uninstall: `ares-install --device lgtv --remove com.craig.radio`
+Bump `version` in `src/appinfo.json` before each install. Uninstall: `ares-install --device lgtv --remove com.craig.radio`
+(this also erases the app's saved favorites and settings).
 
-## Planned
+## Try it on a computer
 
-2. Proxy container: now-playing (ICY), album art, synced favorites.
-3. Lyrics (LRCLIB).
+Open `src/index.html` in Chrome. The layout scales to the window and the arrow keys, Enter and Esc (Back) work as on the
+remote. See `DEVELOPERS.md` for scripted testing.
 
-## Open questions
+## Known limits
 
-- Does audio keep playing when you leave the app? webOS may suspend it; untested.
-- Icons are placeholders copied from the launcher app.
+- No equalizer or real visualizer: the TV plays the stream outside the app's reach. The bars on Now Playing are decorative.
+- When the app is not in the foreground, webOS freezes its script (audio may continue; song info will not update).
+- Favorites and settings live in the app's own storage on the TV only.

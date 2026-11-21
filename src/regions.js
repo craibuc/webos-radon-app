@@ -1,4 +1,6 @@
-// ISO 3166-1 alpha-2 country code -> region, used to group the country picker.
+// ISO 3166-1 alpha-2 country code -> region, used to group the country picker (North America first).
+// Exposes window.regionOf(code) -> region name ('Other' for anything not listed, e.g. territories) and
+// window.REGION_ORDER (display order). Add codes to the lists below when the directory introduces new countries.
 (() => {
   const R = {
     'North America': 'US CA MX GL BM PM',
